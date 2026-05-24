@@ -1,62 +1,183 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>指标计算器</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>A股指标查询</title>
   <style>
-    body{font-family:Helvetica,Arial;margin:0;padding:20px;background:#f6f8fa}
-    .container{max-width:640px;margin:0 auto;background:#fff;padding:16px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.06)}
-    label{display:block;margin-top:12px;font-size:14px}
-    input[type=number]{width:100%;padding:8px;margin-top:6px;font-size:16px;border:1px solid #ddd;border-radius:6px}
-    button{margin-top:14px;padding:10px 14px;font-size:16px;border:none;border-radius:6px;background:#2f80ed;color:#fff}
-    .result{margin-top:16px;padding:12px;background:#f3f9ff;border-radius:6px}
-    .row{display:flex;gap:8px}
-    @media (max-width:480px){.row{flex-direction:column}}
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f5f7fb; color: #333; }
+    .container { max-width: 720px; margin: 0 auto; padding: 24px; background: #fff; border-radius: 12px; box-shadow: 0 12px 24px rgba(0,0,0,0.08); }
+    h1 { margin-top: 0; font-size: 24px; }
+    .field { margin-bottom: 16px; }
+    label { display: block; margin-bottom: 6px; font-weight: 600; }
+    input[type="text"], input[type="date"] { width: 100%; padding: 10px 12px; border: 1px solid #ccd0d8; border-radius: 6px; box-sizing: border-box; }
+    button { padding: 10px 18px; background: #0066cc; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 15px; }
+    button:hover { background: #0052a3; }
+    .note { color: #666; margin-bottom: 12px; }
+    .result { margin-top: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { padding: 10px 12px; border: 1px solid #e1e4ea; text-align: left; }
+    th { background: #f2f4f8; }
+    .error { color: #c0392b; }
+    .success { color: #1f8f4d; }
+    .loading { color: #1a73e8; }
   </style>
 </head>
 <body>
   <div class="container">
-    <h2>技术指标计算器</h2>
-    <p>请输入指标数值（可为小数或整数），支持手机与电脑浏览器。</p>
-    <label>RSI24 <input id="rsi24" type="number" step="any" value="50"></label>
-    <label>RSI12 <input id="rsi12" type="number" step="any" value="50"></label>
-    <label>RSI6  <input id="rsi6"  type="number" step="any" value="50"></label>
-    <label>MACD  <input id="macd"  type="number" step="any" value="0"></label>
-    <label>DIFF  <input id="diff"  type="number" step="any" value="0"></label>
-    <label>DEA   <input id="dea"   type="number" step="any" value="0"></label>
-    <label>当前价格 <input id="m5"    type="number" step="any" value="0"></label>
+    <h1>A股指标查询</h1>
+    <div class="note">输入A股股票代码和日期，获取对应日期的MACD、DIFF、DEA、RSI24、RSI12、RSI6、收盘价、换手率。日期留空时默认返回最后一个交易日。</div>
 
-    <div class="row">
-      <button id="calc">计算</button>
-      <button id="reset" type="button">重置</button>
+    <div class="field">
+      <label for="code">股票代码</label>
+      <input id="code" type="text" placeholder="例如 600519 或 000001" maxlength="6" />
     </div>
+    <div class="field">
+      <label for="date">日期</label>
+      <input id="date" type="date" />
+    </div>
+    <button id="queryBtn">查询</button>
 
-    <div class="result" id="result">结果将在此显示</div>
+    <div id="message" class="note"></div>
+    <div id="result" class="result"></div>
   </div>
 
   <script>
-    function getNum(id){return parseFloat(document.getElementById(id).value)||0}
-    function compute(){
-      const rsi24=getNum('rsi24'), rsi12=getNum('rsi12'), rsi6=getNum('rsi6')
-      const macd=getNum('macd'), diff=getNum('diff'), dea=getNum('dea'), price=getNum('m5')
-      // 计算次日预期：基于 RSI、MACD、DIFF-DEA 的综合评分，并给出买卖建议
-      const score = (rsi24*0.15 + rsi12*0.25 + rsi6*0.25) + (macd*0.15) + ((diff-dea)*0.15)
-      const changePct = (score - 50) * 0.4
-      const predictedPrice = price ? price * (1 + changePct/100) : 0
-      let trend='观望'
-      if(changePct > 3) trend='建议买入'
-      else if(changePct < -3) trend='建议卖出'
-      const out = []
-      out.push('综合评分: '+score.toFixed(2))
-      out.push('次日预期收益率: '+changePct.toFixed(2)+'%')
-      if(price) out.push('次日预测价格: '+predictedPrice.toFixed(2))
-      out.push('建议: '+trend)
-      out.push('详情: RSI24='+rsi24+', RSI12='+rsi12+', RSI6='+rsi6+', MACD='+macd+', DIFF='+diff+', DEA='+dea+', 当前价格='+price)
-      document.getElementById('result').textContent = out.join('\n')
+    const codeInput = document.getElementById('code');
+    const dateInput = document.getElementById('date');
+    const queryBtn = document.getElementById('queryBtn');
+    const message = document.getElementById('message');
+    const result = document.getElementById('result');
+
+    queryBtn.addEventListener('click', async () => {
+      const rawCode = codeInput.value.trim();
+      const dateValue = dateInput.value;
+      result.innerHTML = '';
+      message.textContent = '';
+
+      if (!rawCode || !/^[0-9]{6}$/.test(rawCode)) {
+        message.textContent = '请输入有效的6位A股股票代码。';
+        message.className = 'error';
+        return;
+      }
+
+      const code = rawCode;
+      message.textContent = '查询中，请稍候...';
+      message.className = 'loading';
+
+      try {
+        const secid = code.startsWith('6') ? `0.${code}` : `1.${code}`;
+        const endParam = dateValue ? dateValue.replace(/-/g, '') : '20500000';
+        const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58&klt=101&fqt=1&beg=0&end=${endParam}&lmt=120`;
+        const resp = await fetch(url, { method: 'GET' });
+        const data = await resp.json();
+
+        if (!data || !data.data || !data.data.klines || data.data.klines.length === 0) {
+          throw new Error('未获取到数据，请检查股票代码或日期。');
+        }
+
+        const lines = data.data.klines.map(line => {
+          const parts = line.split(',');
+          return {
+            date: parts[0],
+            open: parseFloat(parts[1]),
+            close: parseFloat(parts[2]),
+            high: parseFloat(parts[3]),
+            low: parseFloat(parts[4]),
+            volume: parseFloat(parts[5]),
+            amount: parseFloat(parts[6]),
+            turnoverRate: parts[7] ? parseFloat(parts[7]) : null
+          };
+        }).reverse();
+
+        const targetDate = dateValue || lines[lines.length - 1].date;
+        const index = lines.findIndex(item => item.date === targetDate);
+        if (index === -1) {
+          throw new Error('所选日期不是交易日或数据不可用。');
+        }
+
+        const closes = lines.map(item => item.close);
+        const macdValues = calculateMACD(closes);
+        const rsi6 = calculateRSI(closes, 6);
+        const rsi12 = calculateRSI(closes, 12);
+        const rsi24 = calculateRSI(closes, 24);
+
+        const target = lines[index];
+        const diff = macdValues.diff[index] ?? null;
+        const dea = macdValues.dea[index] ?? null;
+        const macd = macdValues.macd[index] ?? null;
+
+        result.innerHTML = `
+          <table>
+            <tr><th>日期</th><td>${target.date}</td></tr>
+            <tr><th>收盘价</th><td>${formatNumber(target.close)}</td></tr>
+            <tr><th>换手率</th><td>${target.turnoverRate !== null ? formatNumber(target.turnoverRate) + '%' : '暂无'}</td></tr>
+            <tr><th>MACD</th><td>${formatNumber(macd)}</td></tr>
+            <tr><th>DIFF</th><td>${formatNumber(diff)}</td></tr>
+            <tr><th>DEA</th><td>${formatNumber(dea)}</td></tr>
+            <tr><th>RSI6</th><td>${formatNumber(rsi6[index])}</td></tr>
+            <tr><th>RSI12</th><td>${formatNumber(rsi12[index])}</td></tr>
+            <tr><th>RSI24</th><td>${formatNumber(rsi24[index])}</td></tr>
+          </table>
+        `;
+        message.textContent = '查询成功。';
+        message.className = 'success';
+      } catch (error) {
+        message.textContent = error.message || '查询失败，请重试。';
+        message.className = 'error';
+      }
+    });
+
+    function calculateEMA(values, period) {
+      const ema = [];
+      const k = 2 / (period + 1);
+      values.forEach((value, idx) => {
+        if (idx === 0) {
+          ema[idx] = value;
+        } else {
+          ema[idx] = value * k + ema[idx - 1] * (1 - k);
+        }
+      });
+      return ema;
     }
-    document.getElementById('calc').addEventListener('click',compute)
-    document.getElementById('reset').addEventListener('click',()=>{document.querySelectorAll('input[type=number]').forEach(i=>i.value= i.id.startsWith('rsi')?50:0);document.getElementById('result').textContent='结果将在此显示'})
+
+    function calculateMACD(values) {
+      const ema12 = calculateEMA(values, 12);
+      const ema26 = calculateEMA(values, 26);
+      const diff = values.map((_, idx) => ema12[idx] - ema26[idx]);
+      const dea = calculateEMA(diff, 9);
+      const macd = diff.map((item, idx) => (item - dea[idx]) * 2);
+      return { diff, dea, macd };
+    }
+
+    function calculateRSI(values, period) {
+      const rsi = new Array(values.length).fill(null);
+      let gain = 0;
+      let loss = 0;
+
+      for (let i = 1; i <= period; i++) {
+        const delta = values[i] - values[i - 1];
+        if (delta >= 0) gain += delta;
+        else loss -= delta;
+      }
+      let avgGain = gain / period;
+      let avgLoss = loss / period;
+      rsi[period] = 100 - 100 / (1 + avgGain / (avgLoss || 0.000001));
+
+      for (let i = period + 1; i < values.length; i++) {
+        const delta = values[i] - values[i - 1];
+        const currentGain = delta > 0 ? delta : 0;
+        const currentLoss = delta < 0 ? -delta : 0;
+        avgGain = (avgGain * (period - 1) + currentGain) / period;
+        avgLoss = (avgLoss * (period - 1) + currentLoss) / period;
+        rsi[i] = 100 - 100 / (1 + avgGain / (avgLoss || 0.000001));
+      }
+      return rsi;
+    }
+
+    function formatNumber(value) {
+      return typeof value === 'number' && !Number.isNaN(value) ? value.toFixed(2) : '暂无';
+    }
   </script>
 </body>
 </html>
