@@ -44,6 +44,13 @@
 			return code && code[0]==='6' ? 'sh' : 'sz';
 		}
 
+		// 校验返回内容中是否包含足够的数字字段
+		function hasMultipleNumbers(text, minCount = 3){
+			if(!text) return false;
+			const matches = String(text).match(/-?\d+(?:\.\d+)?/g);
+			return matches && matches.length >= minCount;
+		}
+
 		function show(msg){ document.getElementById('result').textContent = msg; }
 
 		document.getElementById('query').addEventListener('click', function(){
@@ -62,10 +69,16 @@
 				const url = 'https://hq.sinajs.cn/list=' + pref + code;
 				const s = document.createElement('script');
 				s.src = url;
-				s.onload = function(){
+					s.onload = function(){
 					try{
 						const raw = window[varName];
-						if(!raw){ show('未返回数据，可能接口被限制或代码错误。'); return; }
+							if(!raw){ show('未返回数据，可能接口被限制或代码错误。'); return; }
+							// 确认返回中包含多个数字，才认为数据正确
+							if(!hasMultipleNumbers(raw, 3)){
+								show('接口返回异常：未包含足够的数值字段，可能被限制。');
+								s.remove();
+								return;
+							}
 						// raw 格式: "名称,今开,昨收,当前,最高,最低,买盘,卖盘,成交量,成交额,...,时间"
 						const parts = raw.split(',');
 						const lines = [];
@@ -83,7 +96,7 @@
 						if(timeField) lines.push('时间: ' + timeField);
 						lines.push('\n-- 原始返回 --\n' + raw);
 						show(lines.join('\n'));
-					}catch(e){ show('解析失败: '+e.message); }
+						}catch(e){ show('解析失败: '+e.message); }
 					// 清理script标签
 					s.remove();
 				};
@@ -94,12 +107,16 @@
 				show('请求历史日线数据: 正在尝试第三方接口（若失败可能为跨域或接口限制）...');
 				const pref = prefixFor(code);
 				const api = 'http://api.finance.ifeng.com/akdaily/?code=' + pref + code + '&start=' + date + '&end=' + date;
-				fetch(api).then(r=>r.text()).then(txt=>{
-					// 返回通常是 JSON-like，直接展示
-					show('URL: ' + api + '\n\n' + txt);
-				}).catch(err=>{
-					show('历史数据请求失败: ' + err.message + '\n\n尝试使用当天查询获取实时数据。');
-				});
+					fetch(api).then(r=>r.text()).then(txt=>{
+						// 返回通常是 JSON-like，先验证是否含有多个数字字段
+						if(!hasMultipleNumbers(txt, 3)){
+							show('历史数据接口返回异常或为空，未包含足够数值。\nURL: ' + api + '\n\n' + txt);
+							return;
+						}
+						show('URL: ' + api + '\n\n' + txt);
+					}).catch(err=>{
+						show('历史数据请求失败: ' + err.message + '\n\n尝试使用当天查询获取实时数据。');
+					});
 			}
 		});
 	</script>
