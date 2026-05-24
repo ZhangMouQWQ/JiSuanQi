@@ -25,7 +25,7 @@
     <label>MACD  <input id="macd"  type="number" step="any" value="0"></label>
     <label>DIFF  <input id="diff"  type="number" step="any" value="0"></label>
     <label>DEA   <input id="dea"   type="number" step="any" value="0"></label>
-    <label>M5    <input id="m5"    type="number" step="any" value="0"></label>
+    <label>当前价格 <input id="m5"    type="number" step="any" value="0"></label>
 
     <div class="row">
       <button id="calc">计算</button>
@@ -39,16 +39,20 @@
     function getNum(id){return parseFloat(document.getElementById(id).value)||0}
     function compute(){
       const rsi24=getNum('rsi24'), rsi12=getNum('rsi12'), rsi6=getNum('rsi6')
-      const macd=getNum('macd'), diff=getNum('diff'), dea=getNum('dea'), m5=getNum('m5')
-      // 简单加权评分：RSI 越高偏多，MACD/DIFF-DEA 越大偏多，M5 越大偏多
-      const score = (rsi24*0.15 + rsi12*0.25 + rsi6*0.25) + (macd*0.15) + ((diff-dea)*0.15) + (m5*0.05)
-      let trend='中性'
-      if(score>60) trend='看多'
-      else if(score<40) trend='看空'
+      const macd=getNum('macd'), diff=getNum('diff'), dea=getNum('dea'), price=getNum('m5')
+      // 计算次日预期：基于 RSI、MACD、DIFF-DEA 的综合评分，并给出买卖建议
+      const score = (rsi24*0.15 + rsi12*0.25 + rsi6*0.25) + (macd*0.15) + ((diff-dea)*0.15)
+      const changePct = (score - 50) * 0.4
+      const predictedPrice = price ? price * (1 + changePct/100) : 0
+      let trend='观望'
+      if(changePct > 3) trend='建议买入'
+      else if(changePct < -3) trend='建议卖出'
       const out = []
       out.push('综合评分: '+score.toFixed(2))
+      out.push('次日预期收益率: '+changePct.toFixed(2)+'%')
+      if(price) out.push('次日预测价格: '+predictedPrice.toFixed(2))
       out.push('建议: '+trend)
-      out.push('详情: RSI24='+rsi24+', RSI12='+rsi12+', RSI6='+rsi6+', MACD='+macd+', DIFF='+diff+', DEA='+dea+', M5='+m5)
+      out.push('详情: RSI24='+rsi24+', RSI12='+rsi12+', RSI6='+rsi6+', MACD='+macd+', DIFF='+diff+', DEA='+dea+', 当前价格='+price)
       document.getElementById('result').textContent = out.join('\n')
     }
     document.getElementById('calc').addEventListener('click',compute)
