@@ -67,9 +67,18 @@
 
       try {
         const secid = code.startsWith('6') ? `0.${code}` : `1.${code}`;
-        const endParam = dateValue ? dateValue.replace(/-/g, '') : '20500000';
-        const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58&klt=101&fqt=1&beg=0&end=${endParam}&lmt=120`;
-        const resp = await fetch(url, { method: 'GET' });
+        const endParam = dateValue ? dateValue.replace(/-/g, '') : '99991231';
+        const url = `https://push2.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58&klt=101&fqt=1&beg=0&end=${endParam}&lmt=120`;
+        let resp;
+        try {
+          resp = await fetch(url);
+          if (!resp.ok) {
+            throw new Error('direct fetch failed');
+          }
+        } catch (fetchError) {
+          const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+          resp = await fetch(proxyUrl);
+        }
         const data = await resp.json();
 
         if (!data || !data.data || !data.data.klines || data.data.klines.length === 0) {
