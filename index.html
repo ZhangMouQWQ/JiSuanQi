@@ -1,192 +1,107 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>A股指标查询</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 20px; background: #f5f7fb; color: #333; }
-    .container { max-width: 720px; margin: 0 auto; padding: 24px; background: #fff; border-radius: 12px; box-shadow: 0 12px 24px rgba(0,0,0,0.08); }
-    h1 { margin-top: 0; font-size: 24px; }
-    .field { margin-bottom: 16px; }
-    label { display: block; margin-bottom: 6px; font-weight: 600; }
-    input[type="text"], input[type="date"] { width: 100%; padding: 10px 12px; border: 1px solid #ccd0d8; border-radius: 6px; box-sizing: border-box; }
-    button { padding: 10px 18px; background: #0066cc; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 15px; }
-    button:hover { background: #0052a3; }
-    .note { color: #666; margin-bottom: 12px; }
-    .result { margin-top: 20px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-    th, td { padding: 10px 12px; border: 1px solid #e1e4ea; text-align: left; }
-    th { background: #f2f4f8; }
-    .error { color: #c0392b; }
-    .success { color: #1f8f4d; }
-    .loading { color: #1a73e8; }
-  </style>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>A股查询 - 以600416测试</title>
+	<style>
+		body{font-family:Arial,Helvetica,sans-serif;margin:18px}
+		label{display:inline-block;width:70px}
+		input,button{padding:6px;margin:4px}
+		pre{background:#f7f7f7;padding:10px}
+	</style>
 </head>
 <body>
-  <div class="container">
-    <h1>A股指标查询</h1>
-    <div class="note">输入A股股票代码和日期，获取对应日期的MACD、DIFF、DEA、RSI24、RSI12、RSI6、收盘价、换手率。日期留空时默认返回最后一个交易日。</div>
+	<h3>A股即时行情查询（示例：600416）</h3>
+	<div>
+		<label>股票代码</label>
+		<input id="code" value="600416" />
+	</div>
+	<div>
+		<label>日期</label>
+		<input id="date" type="date" />
+	</div>
+	<div>
+		<button id="query">查询</button>
+		<small>提示：此页面优先获取当日（实时）行情；历史日线数据可能受第三方接口限制。</small>
+	</div>
 
-    <div class="field">
-      <label for="code">股票代码</label>
-      <input id="code" type="text" placeholder="例如 600519 或 000001" maxlength="6" />
-    </div>
-    <div class="field">
-      <label for="date">日期</label>
-      <input id="date" type="date" />
-    </div>
-    <button id="queryBtn">查询</button>
+	<h4>结果</h4>
+	<pre id="result">（等待查询）</pre>
 
-    <div id="message" class="note"></div>
-    <div id="result" class="result"></div>
-  </div>
+	<script>
+		// 默认日期为今天
+		(function(){
+			const d = new Date();
+			const yyyy = d.getFullYear();
+			const mm = String(d.getMonth()+1).padStart(2,'0');
+			const dd = String(d.getDate()).padStart(2,'0');
+			document.getElementById('date').value = `${yyyy}-${mm}-${dd}`;
+		})();
 
-  <script>
-    const codeInput = document.getElementById('code');
-    const dateInput = document.getElementById('date');
-    const queryBtn = document.getElementById('queryBtn');
-    const message = document.getElementById('message');
-    const result = document.getElementById('result');
+		function prefixFor(code){
+			// 简单规则：以6开头为上交所(sh)，其它视为深交所(sz)
+			return code && code[0]==='6' ? 'sh' : 'sz';
+		}
 
-    queryBtn.addEventListener('click', async () => {
-      const rawCode = codeInput.value.trim();
-      const dateValue = dateInput.value;
-      result.innerHTML = '';
-      message.textContent = '';
+		function show(msg){ document.getElementById('result').textContent = msg; }
 
-      if (!rawCode || !/^[0-9]{6}$/.test(rawCode)) {
-        message.textContent = '请输入有效的6位A股股票代码。';
-        message.className = 'error';
-        return;
-      }
-
-      const code = rawCode;
-      message.textContent = '查询中，请稍候...';
-      message.className = 'loading';
-
-      try {
-        const secid = code.startsWith('6') ? `0.${code}` : `1.${code}`;
-        const endParam = dateValue ? dateValue.replace(/-/g, '') : '99991231';
-        const url = `https://push2.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58&klt=101&fqt=1&beg=0&end=${endParam}&lmt=120`;
-        let resp;
-        try {
-          resp = await fetch(url);
-          if (!resp.ok) {
-            throw new Error('direct fetch failed');
-          }
-        } catch (fetchError) {
-          const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-          resp = await fetch(proxyUrl);
-        }
-        const data = await resp.json();
-
-        if (!data || !data.data || !data.data.klines || data.data.klines.length === 0) {
-          throw new Error('未获取到数据，请检查股票代码或日期。');
-        }
-
-        const lines = data.data.klines.map(line => {
-          const parts = line.split(',');
-          return {
-            date: parts[0],
-            open: parseFloat(parts[1]),
-            close: parseFloat(parts[2]),
-            high: parseFloat(parts[3]),
-            low: parseFloat(parts[4]),
-            volume: parseFloat(parts[5]),
-            amount: parseFloat(parts[6]),
-            turnoverRate: parts[7] ? parseFloat(parts[7]) : null
-          };
-        }).reverse();
-
-        const targetDate = dateValue || lines[lines.length - 1].date;
-        const index = lines.findIndex(item => item.date === targetDate);
-        if (index === -1) {
-          throw new Error('所选日期不是交易日或数据不可用。');
-        }
-
-        const closes = lines.map(item => item.close);
-        const macdValues = calculateMACD(closes);
-        const rsi6 = calculateRSI(closes, 6);
-        const rsi12 = calculateRSI(closes, 12);
-        const rsi24 = calculateRSI(closes, 24);
-
-        const target = lines[index];
-        const diff = macdValues.diff[index] ?? null;
-        const dea = macdValues.dea[index] ?? null;
-        const macd = macdValues.macd[index] ?? null;
-
-        result.innerHTML = `
-          <table>
-            <tr><th>日期</th><td>${target.date}</td></tr>
-            <tr><th>收盘价</th><td>${formatNumber(target.close)}</td></tr>
-            <tr><th>换手率</th><td>${target.turnoverRate !== null ? formatNumber(target.turnoverRate) + '%' : '暂无'}</td></tr>
-            <tr><th>MACD</th><td>${formatNumber(macd)}</td></tr>
-            <tr><th>DIFF</th><td>${formatNumber(diff)}</td></tr>
-            <tr><th>DEA</th><td>${formatNumber(dea)}</td></tr>
-            <tr><th>RSI6</th><td>${formatNumber(rsi6[index])}</td></tr>
-            <tr><th>RSI12</th><td>${formatNumber(rsi12[index])}</td></tr>
-            <tr><th>RSI24</th><td>${formatNumber(rsi24[index])}</td></tr>
-          </table>
-        `;
-        message.textContent = '查询成功。';
-        message.className = 'success';
-      } catch (error) {
-        message.textContent = error.message || '查询失败，请重试。';
-        message.className = 'error';
-      }
-    });
-
-    function calculateEMA(values, period) {
-      const ema = [];
-      const k = 2 / (period + 1);
-      values.forEach((value, idx) => {
-        if (idx === 0) {
-          ema[idx] = value;
-        } else {
-          ema[idx] = value * k + ema[idx - 1] * (1 - k);
-        }
-      });
-      return ema;
-    }
-
-    function calculateMACD(values) {
-      const ema12 = calculateEMA(values, 12);
-      const ema26 = calculateEMA(values, 26);
-      const diff = values.map((_, idx) => ema12[idx] - ema26[idx]);
-      const dea = calculateEMA(diff, 9);
-      const macd = diff.map((item, idx) => (item - dea[idx]) * 2);
-      return { diff, dea, macd };
-    }
-
-    function calculateRSI(values, period) {
-      const rsi = new Array(values.length).fill(null);
-      let gain = 0;
-      let loss = 0;
-
-      for (let i = 1; i <= period; i++) {
-        const delta = values[i] - values[i - 1];
-        if (delta >= 0) gain += delta;
-        else loss -= delta;
-      }
-      let avgGain = gain / period;
-      let avgLoss = loss / period;
-      rsi[period] = 100 - 100 / (1 + avgGain / (avgLoss || 0.000001));
-
-      for (let i = period + 1; i < values.length; i++) {
-        const delta = values[i] - values[i - 1];
-        const currentGain = delta > 0 ? delta : 0;
-        const currentLoss = delta < 0 ? -delta : 0;
-        avgGain = (avgGain * (period - 1) + currentGain) / period;
-        avgLoss = (avgLoss * (period - 1) + currentLoss) / period;
-        rsi[i] = 100 - 100 / (1 + avgGain / (avgLoss || 0.000001));
-      }
-      return rsi;
-    }
-
-    function formatNumber(value) {
-      return typeof value === 'number' && !Number.isNaN(value) ? value.toFixed(2) : '暂无';
-    }
-  </script>
+		document.getElementById('query').addEventListener('click', function(){
+			const code = (document.getElementById('code').value||'').trim();
+			const date = document.getElementById('date').value;
+			if(!/^[0-9]+$/.test(code)){ show('请输入纯数字的股票代码，例如 600416'); return; }
+			const pref = prefixFor(code);
+			const today = new Date();
+			const sel = new Date(date);
+			// 仅当选择的是今天才请求新浪实时接口（通过动态script可跨域获取变量）
+			if(sel.toDateString() === today.toDateString()){
+				show('正在获取实时行情...');
+				const varName = 'hq_str_' + pref + code;
+				// 移除旧的全局变量（如果有）
+				try{ window[varName] = undefined; }catch(e){}
+				const url = 'https://hq.sinajs.cn/list=' + pref + code;
+				const s = document.createElement('script');
+				s.src = url;
+				s.onload = function(){
+					try{
+						const raw = window[varName];
+						if(!raw){ show('未返回数据，可能接口被限制或代码错误。'); return; }
+						// raw 格式: "名称,今开,昨收,当前,最高,最低,买盘,卖盘,成交量,成交额,...,时间"
+						const parts = raw.split(',');
+						const lines = [];
+						lines.push('代码: ' + pref + code);
+						lines.push('名称: ' + (parts[0]||''));
+						lines.push('今开: ' + (parts[1]||''));
+						lines.push('昨收: ' + (parts[2]||''));
+						lines.push('当前: ' + (parts[3]||''));
+						lines.push('最高: ' + (parts[4]||''));
+						lines.push('最低: ' + (parts[5]||''));
+						lines.push('成交量(手): ' + (parts[8]||''));
+						lines.push('成交额(元): ' + (parts[9]||''));
+						// 尝试找到时间字段（常在第30或31位），否则显示原始
+						const timeField = parts.slice(30,33).find(Boolean) || parts[31] || '';
+						if(timeField) lines.push('时间: ' + timeField);
+						lines.push('\n-- 原始返回 --\n' + raw);
+						show(lines.join('\n'));
+					}catch(e){ show('解析失败: '+e.message); }
+					// 清理script标签
+					s.remove();
+				};
+				s.onerror = function(){ show('请求失败，无法加载行情接口（可能被浏览器或服务端阻止）。'); s.remove(); };
+				document.head.appendChild(s);
+			}else{
+				// 如果不是今天，说明用户想获取历史数据；尝试调用凤凰网日线接口（可能受限）
+				show('请求历史日线数据: 正在尝试第三方接口（若失败可能为跨域或接口限制）...');
+				const pref = prefixFor(code);
+				const api = 'http://api.finance.ifeng.com/akdaily/?code=' + pref + code + '&start=' + date + '&end=' + date;
+				fetch(api).then(r=>r.text()).then(txt=>{
+					// 返回通常是 JSON-like，直接展示
+					show('URL: ' + api + '\n\n' + txt);
+				}).catch(err=>{
+					show('历史数据请求失败: ' + err.message + '\n\n尝试使用当天查询获取实时数据。');
+				});
+			}
+		});
+	</script>
 </body>
 </html>
